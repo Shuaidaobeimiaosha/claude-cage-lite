@@ -21,14 +21,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create non-root user
-RUN useradd -m -s /bin/bash -u 1000 claude \
-    && mkdir -p /home/claude/.claude \
-    && chown -R claude:claude /home/claude
+# Use the existing 'node' user (UID 1000) from the official image
+# Prepare home directory for Claude config (login state lives in a Docker volume)
+RUN mkdir -p /home/node/.claude \
+    && chown -R node:node /home/node
 
-USER claude
+USER node
 WORKDIR /workspace
-ENV HOME=/home/claude
+ENV HOME=/home/node
 ENV TERM=xterm-256color
 
 # Default command (overridden by the launcher)

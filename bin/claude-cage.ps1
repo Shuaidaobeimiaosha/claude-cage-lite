@@ -59,7 +59,7 @@ if ($Volume) {
     $VolumeName = "$DefaultVolume-$Volume"
 }
 
-# Ensure volume exists (holds entire /home/claude — login state fully isolated)
+# Ensure volume exists (holds entire /home/node — login state fully isolated)
 cmd /c "docker volume create $VolumeName >nul 2>&1"
 
 # Build image if needed
@@ -86,8 +86,8 @@ $dockerArgs = @(
     "run", "--rm", "-it",
     "--name", "claude-cage-$PID",
     "-v", "${ProjectDir}:/workspace:rw",
-    "-v", "${VolumeName}:/home/claude:rw",
-    "-e", "HOME=/home/claude",
+    "-v", "${VolumeName}:/home/node:rw",
+    "-e", "HOME=/home/node",
     "-e", "TERM=xterm-256color",
     "-w", "/workspace",
     "--user", "1000:1000"
