@@ -60,12 +60,12 @@ if ($Volume) {
 }
 
 # Ensure volume exists (holds entire /home/claude — login state fully isolated)
-docker volume create $VolumeName 2>&1 | Out-Null
+cmd /c "docker volume create $VolumeName >nul 2>&1"
 
 # Build image if needed
 $needBuild = $Rebuild
 if (-not $needBuild) {
-    $null = docker image inspect $ImageName 2>&1
+    cmd /c "docker image inspect $ImageName >nul 2>&1"
     if ($LASTEXITCODE -ne 0) { $needBuild = $true }
 }
 
