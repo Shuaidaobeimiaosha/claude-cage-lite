@@ -1,0 +1,16 @@
+# Local
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts (if any)
+dist/
+build/

@@ -1,0 +1,10 @@
+.git
+.gitignore
+*.md
+bin/
+docs/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
