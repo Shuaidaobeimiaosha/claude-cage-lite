@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Claude Cage Lite - Cross-platform launcher (Git Bash / WSL / Linux / macOS)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+IMAGE_NAME="${CLAUDE_CAGE_IMAGE:-claude-cage-lite}"
+DEFAULT_VOLUME="claude-cage-home"
+
+# ---------- helpers ----------
+usage() {
+  cat <<EOF
+Usage: claude-cage [OPTIONS] [CLAUDE_ARGS...]
+
+Lightweight isolated sandbox for Claude Code.
+Claude login state is completely isolated from the host.
+
+Options:
+  --volume, -v NAME    Use named volume suffix (default: none)
+                       Example: --volume work  →  volume "claude-cage-home-work"
+  --rebuild            Force rebuild the Docker image
+  --shell              Enter an interactive bash shell inside the container
+  --help, -h           Show this help
+
+Examples:
+  claude-cage                          # current directory, default volume
+  claude-cage --volume personal        # separate login state
+  claude-cage --rebuild                # rebuild image then run
+  claude-cage "explain this codebase"  # pass prompt to Claude
+EOF
+}
+
+need_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Error: docker is not installed or not in PATH." >&2
+    echo "Install Docker Desktop for Windows: https://www.docker.com/products/docker-desktop/" >&2
+    exit 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "Error: Docker daemon is not running. Please start Docker Desktop." >&2
+    exit 1
+  fi
+}
+
+build_image() {
+  echo "→ Building image: $IMAGE_NAME"
+  docker build -t "$IMAGE_NAME" "$PROJECT_ROOT"
+}
+
+# ---------- parse args ----------
+VOLUME_SUFFIX=""
+REBUILD=0
+SHELL_MODE=0
+CLAUDE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --volume|-v)
+      VOLUME_SUFFIX="${2:-}"
+      if [[ -z "$VOLUME_SUFFIX" ]]; then
+        echo "Error: --volume requires a name" >&2
+        exit 1
+      fi
+      shift 2
+      ;;
+    --rebuild)
+      REBUILD=1
+      shift
+      ;;
+    --shell)
+      SHELL_MODE=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      CLAUDE_ARGS+=("$@")
+      break
+      ;;
+    *)
+      CLAUDE_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# ---------- main ----------
+need_docker
+
+VOLUME_NAME="$DEFAULT_VOLUME"
+if [[ -n "$VOLUME_SUFFIX" ]]; then
+  VOLUME_NAME="${DEFAULT_VOLUME}-${VOLUME_SUFFIX}"
+fi
+
+# Ensure volume exists (holds entire /home/claude — login state fully isolated)
+docker volume create "$VOLUME_NAME" >/dev/null
+
+if [[ $REBUILD -eq 1 ]] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+  build_image
+fi
+
+PROJECT_DIR="$(pwd)"
+
+# Detect if running under Git Bash / MSYS (Windows path conversion)
+if [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+  # Convert Windows path to Docker-friendly form
+  PROJECT_DIR="$(pwd -W 2>/dev/null || pwd)"
+fi
+
+echo "→ Project : $PROJECT_DIR"
+echo "→ Volume  : $VOLUME_NAME  (Claude login state is fully isolated)"
+echo "→ Image   : $IMAGE_NAME"
+echo
+
+COMMON_ARGS=(
+  --rm
+  -it
+  --name "claude-cage-$$"
+  -v "${PROJECT_DIR}:/workspace:rw"
+  -v "${VOLUME_NAME}:/home/claude:rw"
+  -e "HOME=/home/claude"
+  -e "TERM=${TERM:-xterm-256color}"
+  -w /workspace
+  --user "1000:1000"
+)
+
+# Optional: pass through proxy environment variables if set on host
+[[ -n "${HTTP_PROXY:-}"  ]] && COMMON_ARGS+=(-e "HTTP_PROXY=$HTTP_PROXY")
+[[ -n "${HTTPS_PROXY:-}" ]] && COMMON_ARGS+=(-e "HTTPS_PROXY=$HTTPS_PROXY")
+[[ -n "${NO_PROXY:-}"    ]] && COMMON_ARGS+=(-e "NO_PROXY=$NO_PROXY")
+[[ -n "${http_proxy:-}"  ]] && COMMON_ARGS+=(-e "http_proxy=$http_proxy")
+[[ -n "${https_proxy:-}" ]] && COMMON_ARGS+=(-e "https_proxy=$https_proxy")
+
+if [[ $SHELL_MODE -eq 1 ]]; then
+  docker run "${COMMON_ARGS[@]}" "$IMAGE_NAME" bash
+else
+  docker run "${COMMON_ARGS[@]}" "$IMAGE_NAME" claude "${CLAUDE_ARGS[@]}"
+fi
